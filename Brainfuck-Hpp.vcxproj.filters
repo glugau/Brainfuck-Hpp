@@ -24,6 +24,9 @@
     <ClCompile Include="examples\hello_world.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="test\iterators.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Brainfuck.hpp">

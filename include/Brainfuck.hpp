@@ -8,8 +8,10 @@
 #include <sstream>
 #include <vector>
 #include <iostream>
+#include <iterator>
 #include <algorithm>
 #include <stack>
+#include <type_traits>
 
 namespace bfi
 {
@@ -54,15 +56,18 @@ namespace bfi
 
 			void resetMemory();
 			void resetState();
-			bool getCompileResult(std::string& out) const;
+			void resetInstrPtr();
+			void resetMemPtr();
+			bool hasCompiled(std::string& out) const;
 			
 			CellType& operator[](size_t i) const;
 
 			void run(const std::vector<CellType>* inputData = nullptr, std::vector<CellType>* outputData = nullptr, size_t maxTokens = 0);
 			void run(std::istream* inputStream, std::ostream* outputStream, size_t maxTokens = 0);
+			void run(const std::string* inputString, std::string* outputString, size_t maxTokens = 0);
 		private:
 			template<class ItIn, class ItOut>
-			void run(ItIn inBegin, ItIn inEnd, ItOut out, size_t maxTokens = 0);
+			void runIt(ItIn inBegin, ItIn inEnd, ItOut out, size_t maxTokens = 0);
 			void compile(const std::string& code);
 			std::string genCompileMessage(const std::string& code, size_t ierr);
 		private:
@@ -101,7 +106,19 @@ namespace bfi
 		void Program<CellType>::resetState()
 		{
 			resetMemory();
+			resetInstrPtr();
+			resetMemPtr();
+		}
+
+		template<class CellType>
+		void Program<CellType>::resetInstrPtr()
+		{
 			ip = 0;
+		}
+
+		template<class CellType>
+		void Program<CellType>::resetMemPtr()
+		{
 			mp = 0;
 		}
 
@@ -112,7 +129,7 @@ namespace bfi
 		}
 
 		template<class CellType>
-		bool Program<CellType>::getCompileResult(std::string& out) const
+		bool Program<CellType>::hasCompiled(std::string& out) const
 		{
 			out = compileMessage;
 			return compileSuccess;
@@ -167,10 +184,10 @@ namespace bfi
 						compileMessage = genCompileMessage(code, i);
 					}
 				}
-
-				if (compileSuccess)
-					compileMessage = "Compilation completed successfully without any errors.";
 			}
+
+			if (compileSuccess)
+				compileMessage = "Compilation completed successfully without any errors.";
 
 			// Error: [ with no closing ]
 			if (!jmpStack.empty())
@@ -219,7 +236,7 @@ namespace bfi
 
 		template<class CellType>
 		template<class ItIn, class ItOut>
-		void Program<CellType>::run(ItIn inBegin, ItIn inEnd, ItOut out, size_t maxTokens)
+		void Program<CellType>::runIt(ItIn inBegin, ItIn inEnd, ItOut out, size_t maxTokens)
 		{
 			size_t start = ip;
 			while ((ip - start < maxTokens || maxTokens == 0) && ip < instructions.size())
@@ -240,14 +257,18 @@ namespace bfi
 					mp = wrap ? (mp + instr.value) % memSize : mp + 1;
 					break;
 				case '.':
-					if (out)
-						for (size_t i; i < instr.value; ++i)
+					if constexpr (!std::is_same_v<ItOut, std::nullptr_t>)
+					{
+						for (size_t i = 0; i < instr.value; ++i)
 							*out++ = mem[mp];
+					}
 					break;
 				case ',':
-					if (in)
-						for(size_t i = 0; inBegin != inEnd && i < instr.value; ++i, ++inBegin)
+					if constexpr (!std::is_same_v<ItIn, std::nullptr_t>)
+					{
+						for (size_t i = 0; inBegin != inEnd && i < instr.value; ++i, ++inBegin)
 							mem[mp] = *inBegin;
+					}
 					break;
 				case '[':
 					ip = mem[mp] ? ip : instr.value - 1;
@@ -263,19 +284,52 @@ namespace bfi
 		template<class CellType>
 		void Program<CellType>::run(const std::vector<CellType>* in, std::vector<CellType>* out, size_t maxTokens)
 		{
-			
+			if (in && out)
+				runIt(in->begin(), in->end(), std::back_inserter(*out), maxTokens);
+			else if (in)
+				runIt(in->begin(), in->end(), nullptr, maxTokens);
+			else if (out)
+				runIt(nullptr, nullptr, std::back_inserter(*out), maxTokens);
+			else
+				runIt(nullptr, nullptr, nullptr, maxTokens);
+		}
+
+		template<class CellType>
+		void Program<CellType>::run(const std::string* in, std::string* out, size_t maxTokens)
+		{
+			// Cast the input into the valid integer type, into a vector.
+			std::vector<CellType> vin;
+			std::vector<CellType>* pvin = in ? &vin : nullptr;
+			std::vector<CellType> vout;
+			std::vector<CellType>* pvout = out ? &vout : nullptr;
+
+			if (in)
+			{
+				vin.reserve(in->size());
+				for (char c : *in)
+					vin.push_back((CellType)c);
+			}
+
+			run(pvin, pvout, maxTokens);
+
+			if (out)
+			{
+				for (CellType v : vout)
+					*out += (char)v;
+			}
 		}
 
 		template<class CellType>
 		void Program<CellType>::run(std::istream* is, std::ostream* os, size_t maxTokens)
 		{
-
-		}
-
-		template<class CellType>
-		void Program<CellType>::run(const std::vector<CellType>& in, std::vector<CellType>& out, size_t maxTokens)
-		{
-
+			if (is && os)
+				runIt(std::istream_iterator<CellType>(*is), std::istream_iterator<CellType>(), std::ostream_iterator<CellType>(*os), maxTokens);
+			else if (is)
+				runIt(std::istream_iterator<CellType>(*is), std::istream_iterator<CellType>(), nullptr, maxTokens);
+			else if (os)
+				runIt(nullptr, nullptr, std::ostream_iterator<CellType>(*os), maxTokens);
+			else
+				runIt(nullptr, nullptr, nullptr, maxTokens);
 		}
 	}
 }
