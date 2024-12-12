@@ -13,23 +13,23 @@
 
 namespace bfi
 {
-	namespace impl
+	namespace _impl
 	{
 		template<class CellType=char>
 		class Program;
 	}
 
-	using Brainfuck		= impl::Program<char>;
-	using u8Brainfuck	= impl::Program<uint8_t>;
-	using i8Brainfuck	= impl::Program<int8_t>;
-	using u16Brainfuck	= impl::Program<uint16_t>;
-	using i16Brainfuck	= impl::Program<int16_t>;
-	using u32Brainfuck	= impl::Program<uint32_t>;
-	using i32Brainfuck	= impl::Program<int32_t>;
-	using u64Brainfuck	= impl::Program<uint64_t>;
-	using i64Brainfuck	= impl::Program<int64_t>;
+	using Brainfuck		= _impl::Program<char>;
+	using u8Brainfuck	= _impl::Program<uint8_t>;
+	using i8Brainfuck	= _impl::Program<int8_t>;
+	using u16Brainfuck	= _impl::Program<uint16_t>;
+	using i16Brainfuck	= _impl::Program<int16_t>;
+	using u32Brainfuck	= _impl::Program<uint32_t>;
+	using i32Brainfuck	= _impl::Program<int32_t>;
+	using u64Brainfuck	= _impl::Program<uint64_t>;
+	using i64Brainfuck	= _impl::Program<int64_t>;
 
-	namespace impl
+	namespace _impl
 	{
 		struct Instruction
 		{
@@ -49,35 +49,36 @@ namespace bfi
 		class Program
 		{
 		public:
-			Program(const std::string& code, size_t memCells = 30000);
+			Program(const std::string& code, size_t memCells = 30000, bool wrapMemory = true);
 			~Program();
 
 			void resetMemory();
 			void resetState();
 			bool getCompileResult(std::string& out) const;
-			CellType getMemory(size_t i) const;
+			
+			CellType& operator[](size_t i) const;
 
-			void run(size_t maxTokens = 0);
-			void run(std::istream& inputSstream, size_t maxTokens = 0);
-			void run(std::istream& inputStream, std::ostream& outputStream, size_t maxTokens = 0);
-			void run(std::ostream& outputStream, size_t maxTokens = 0);
-			void run(const std::vector<CellType>& inputData, std::vector<CellType>& outputData, size_t maxTokens = 0);
+			void run(const std::vector<CellType>* inputData = nullptr, std::vector<CellType>* outputData = nullptr, size_t maxTokens = 0);
+			void run(std::istream* inputStream, std::ostream* outputStream, size_t maxTokens = 0);
 		private:
+			template<class ItIn, class ItOut>
+			void run(ItIn inBegin, ItIn inEnd, ItOut out, size_t maxTokens = 0);
 			void compile(const std::string& code);
 			std::string genCompileMessage(const std::string& code, size_t ierr);
 		private:
+			const bool wrap;
 			bool compileSuccess = false;
 			std::string compileMessage;
 			size_t ip = 0;
 			size_t mp = 0;
 			const size_t memSize;
 			CellType* mem;
-			std::vector<impl::Instruction> instructions;
+			std::vector<Instruction> instructions;
 		};
 
 		template<class CellType>
-		Program<CellType>::Program(const std::string& code, size_t memCells) :
-			memSize{ memCells }
+		Program<CellType>::Program(const std::string& code, size_t memCells, bool wrapMemory) :
+			memSize{ memCells }, wrap{wrapMemory}
 		{
 			mem = new CellType[memCells];
 			resetState();
@@ -105,9 +106,9 @@ namespace bfi
 		}
 
 		template<class CellType>
-		CellType Program<CellType>::getMemory(size_t i) const
+		CellType& Program<CellType>::operator[](size_t i) const
 		{
-			return mem[i % memSize];
+			return wrap ? mem[i % memSize] : mem[i];
 		}
 
 		template<class CellType>
@@ -217,25 +218,56 @@ namespace bfi
 		}
 
 		template<class CellType>
-		void Program<CellType>::run(size_t maxTokens)
+		template<class ItIn, class ItOut>
+		void Program<CellType>::run(ItIn inBegin, ItIn inEnd, ItOut out, size_t maxTokens)
 		{
-
+			size_t start = ip;
+			while ((ip - start < maxTokens || maxTokens == 0) && ip < instructions.size())
+			{
+				Instruction instr = instructions[ip];
+				switch (instr.instr)
+				{
+				case '+':
+					mem[mp] += instr.value;
+					break;
+				case '-':
+					mem[mp] -= instr.value;
+					break;
+				case '<':
+					mp = wrap ? ((mp + memSize - instr.value % memSize) % memSize) : (mp - 1);
+					break;
+				case '>':
+					mp = wrap ? (mp + instr.value) % memSize : mp + 1;
+					break;
+				case '.':
+					if (out)
+						for (size_t i; i < instr.value; ++i)
+							*out++ = mem[mp];
+					break;
+				case ',':
+					if (in)
+						for(size_t i = 0; inBegin != inEnd && i < instr.value; ++i, ++inBegin)
+							mem[mp] = *inBegin;
+					break;
+				case '[':
+					ip = mem[mp] ? ip : instr.value - 1;
+					break;
+				case ']':
+					ip = mem[mp] ? instr.value - 1 : ip;
+					break;
+				}
+				ip++;
+			}
 		}
 
 		template<class CellType>
-		void Program<CellType>::run(std::istream& is, size_t maxTokens)
+		void Program<CellType>::run(const std::vector<CellType>* in, std::vector<CellType>* out, size_t maxTokens)
 		{
-
+			
 		}
 
 		template<class CellType>
-		void Program<CellType>::run(std::ostream& os, size_t maxTokens)
-		{
-
-		}
-
-		template<class CellType>
-		void Program<CellType>::run(std::istream& is, std::ostream& os, size_t maxTokens)
+		void Program<CellType>::run(std::istream* is, std::ostream* os, size_t maxTokens)
 		{
 
 		}
