@@ -20,7 +20,7 @@ int main()
         std::string input = /* Your program input*/;
         std::string output;
         bf.run(&input, &output);
-        bf[30]; // Acces the 31th cell of the memory, after execution.
+        bf[30]; // Access the 31th cell of the memory, after execution.
         bf.resetState(); // Reset the state (memory & pointers) of the interpreter.
         // Alternatively, bf.resetMemory() resets only the memory.
     }
